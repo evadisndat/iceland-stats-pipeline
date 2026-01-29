@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 First time setup;
 python -m venv .venv
 anytime you wanna work on venv;
@@ -18,7 +17,3 @@ Logic of updating the database is handled in azure_db
 After connecting you can browse tables in vscode,  if we prefer to use something else we can change this easily
 NOTE: the extension only connects VScode - Azure for looking at things, we will always need to use the pipeline to update first
 before looking at it.
-=======
-# iceland-stats-pipeline
-Business intelligence project using Icelandic public statistics.
->>>>>>> fb6d378b5687a8a64d978139a847c04b719f09b2
