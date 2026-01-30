@@ -6,26 +6,20 @@ import os
 from azure_db import write_to_azure_sql
 
 
-
-
 """
-loads hagstofa csv - assuming you downloaded semicolon separated
-CSV rotated clockwise, handles titles at the top by skipping first line.
+Loads population data downloaded from Hagstofan.
 
-Standardizes the table by making column names consistent and cleans up
-floatnumbers to int, turns missing values into NaN (didn't know how we were
-supposed to handle those yet).
+- Reads semicolon-separated CSV exported 
+- Standardizes column names
+- Converts numbers like 122.342 to 122342
+- Identifies the year column 
+- Since population data is published annually the dataset is expanded
+  to monthly values by assuming constant population within each year.
+- Calculates the number of foreigners as
+    foreigners = total population - population born in Iceland.
+- Reorders columns 
+- Writes the processed dataset to Azure SQL, replacing the table if it exists.
 
-Creates year and month.
-
-Parses PXWeb format time values (yyyyMx) = year = YYYY month = x.
-
-Prints the columns list og fyrstu 3 time/year/month rows & total row count.
-
-Writes the cleaned data into SQL - creates or updates db/project.db (SQLite).
-Saves a SQL table called dataset_a containing the cleaned data.
-And prints number of rows inserted + database location.
-Currently it runs on a single CSV file called from main() 
 """
 
 
@@ -33,18 +27,12 @@ Currently it runs on a single CSV file called from main()
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 RAW_DIR = BASE_DIR / "data" / "raw"
-DB_PATH = BASE_DIR / "db" / "project.db"
-
 RAW_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-
-
+#downloaded semmikommuskipt csv
 def read_hagstofa_csv(csv_path: Path) -> pd.DataFrame:
-    # assuming first line is a title since we cannot edit anything by hand
     for skip in (0, 1):
         df = pd.read_csv(csv_path, sep=";", skiprows=skip)
-        # if we got at least 2 columns, it's probably correct
         if df.shape[1] >= 2:
             return df
     return df
@@ -55,35 +43,26 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def find_time_col(df: pd.DataFrame) -> str:
-    candidates = ["time", "tími", "timi", "timabil", "tímabil", "date", "mánuður", "manudur"]
-    for c in candidates:
-        if c in df.columns:
+def find_year_col(df: pd.DataFrame) -> str:
+
+    for c in df.columns:
+        s = df[c].astype(str).str.strip()
+        if s.str.fullmatch(r"\d{4}").any():
             return c
-    # if not then the first column usually holds time in rotated tables
-    return df.columns[0]
+    raise ValueError("Could not find a year column ")
 
 
-def add_year_month(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
-    s = df[time_col].astype(str).str.strip()
-
-    # PXWeb: 2020M01 - hagstofan notar thad format
-    m = s.str.extract(r"^(?P<year>\d{4})M(?P<month>\d{1,2})$")
-    if m.notna().all(axis=1).any():
-        df["year"] = pd.to_numeric(m["year"], errors="raise").astype(int)
-        df["month"] = pd.to_numeric(m["month"], errors="raise").astype(int)
-        return df
-
-    # YYYY-MM or YYYY/MM or YYYY.MM eda full date
-    dt = pd.to_datetime(s, errors="coerce")
-    if dt.notna().any():
-        df["year"] = dt.dt.year
-        df["month"] = dt.dt.month
-        if df["year"].isna().any() or df["month"].isna().any():
-            raise ValueError(f"Some '{time_col}' rows could not be parsed as dates.")
-        return df
-
-    raise ValueError(f"Could not parse time column '{time_col}' into year/month.")
+def add_year_month_from_yearcol(df: pd.DataFrame, year_col: str) -> pd.DataFrame:
+    """
+   aðeins mælt 1x á ári þannig breytum ári í mánuð
+    """
+    s = df[year_col].astype(str).str.strip()
+    y = s.str.extract(r"^(?P<year>\d{4})$")
+    if not y["year"].notna().any():
+        raise ValueError(f"Year column '{year_col}' did not contain 4-digit years.")
+    df["year"] = pd.to_numeric(y["year"], errors="raise").astype(int)
+    df["month"] = 1
+    return df
 
 
 def coerce_icelandic_numbers(df: pd.DataFrame, exclude_cols: set) -> pd.DataFrame:
@@ -93,45 +72,81 @@ def coerce_icelandic_numbers(df: pd.DataFrame, exclude_cols: set) -> pd.DataFram
         df[c] = (
             df[c]
             .astype(str)
-            .str.replace(".", "", regex=False)  #t.d 159.248 -> 159248
+            .str.replace(".", "", regex=False)  # 23.400 -> 23400
             .replace("..", None)
         )
         df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
 
 
-def load_table(csv_path: Path) -> pd.DataFrame:
+def load_population_table(csv_path: Path) -> pd.DataFrame:
+    """
+    Sérhæft fyrir mannfjölda (ár + aldur + alls + ísland).
+    """
     df = read_hagstofa_csv(csv_path)
     df = normalize_columns(df)
 
-    time_col = find_time_col(df)
-    df = df.rename(columns={time_col: "time"})
+    year_col = find_year_col(df)
 
-    df = coerce_icelandic_numbers(df, exclude_cols={"time"})
-    df = add_year_month(df, "time")
+    
+    exclude = {year_col}
+    
+    exclude.add(df.columns[0])
+
+    df = coerce_icelandic_numbers(df, exclude_cols=exclude)
+    df = add_year_month_from_yearcol(df, year_col)
 
     return df
 
 
+def expand_population_to_months(df: pd.DataFrame) -> pd.DataFrame:
+    """
+  Population data is published annually  and was therefore expanded to
+    monthly frequency by assuming constant population within each year. 
+
+    """
+    rows = []
+
+    for _, row in df.iterrows():
+        for m in range(1, 13):
+            new_row = row.copy()
+            new_row["month"] = m
+            rows.append(new_row)
+
+    return pd.DataFrame(rows)
 
 
 def main():
-    a_path = RAW_DIR / "dataset3.csv"  #change this for other datasets
+    a_path = RAW_DIR / "mannfjoldi.csv"
     if not a_path.exists():
-        print("Put dataset you are using in data/raw first.")
+        print("Put mannfjoldi.csv in data/raw first.")
         return
 
-    df_a = load_table(a_path)
+    df = load_population_table(a_path)
 
-    print("Columns:", list(df_a.columns))
-    print(df_a.head(3)[["time", "year", "month"]])
-    print("Rows:", len(df_a))
+
+    #reikna fjölda innflytjenda með fjöldi alls-island
+    df["foreigners"] = df["alls_alls"] - df["ísland_alls"]
+
+    cols = list(df.columns)
+    idx = cols.index("ísland_alls") + 1
+    cols.insert(idx, cols.pop(cols.index("foreigners")))
+    df = df[cols]
+
+    # droppa ár því við öddum year, þarf að laga logic 
+    if "ár" in df.columns:
+        df = df.drop(columns=["ár"])
+
+    df = expand_population_to_months(df)
+
+    print("Columns:", list(df.columns))
+    print(df.head(5))
+    print("Rows:", len(df))
 
     print("\nWriting to Azure SQL...")
-    count = write_to_azure_sql(df_a, "dataset_a")
-    print("Rows in Azure SQL dataset_a:", count)
+    count = write_to_azure_sql(df, "population_raw")
+    print("Rows in Azure SQL population_raw:", count)
     print("Database:", os.environ["AZURE_SQL_DB"], "on", os.environ["AZURE_SQL_SERVER"])
-
 
 
 if __name__ == "__main__":

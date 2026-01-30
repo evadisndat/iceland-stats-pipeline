@@ -1,1 +1,3 @@
-SELECT DB_NAME() AS current_db, @@SERVERNAME AS server_name;
+
+SELECT DB_NAME() AS current_database;
+
