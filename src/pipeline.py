@@ -20,6 +20,7 @@ Loads population data downloaded from Hagstofan.
 - Reorders columns 
 - Writes the processed dataset to Azure SQL, replacing the table if it exists.
 
+
 """
 
 

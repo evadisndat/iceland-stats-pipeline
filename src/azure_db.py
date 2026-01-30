@@ -35,7 +35,33 @@ def write_to_azure_sql(df: pd.DataFrame, table_name: str) -> int:
         cur.execute(f"IF OBJECT_ID(N'{table_name}', N'U') IS NOT NULL DROP TABLE [{table_name}];")
         conn.commit()
 
-        # create table: everything NVARCHAR(MAX)
+        """
+        NOTE (for us):
+
+        All columns in the Azure SQL table are stored as NVARCHAR (text).
+        This was done on purpose to avoid errors
+        with data types or Icelandic characters. Because of this, SQL treats numbers
+        as text.
+
+        To check if the data transferred correctly:
+
+            In Python:
+             - Check the number of rows with len(df)
+             - This is the expected number of stuff
+
+            In SQL (Azure):
+            -  SELECT COUNT(*) FROM population_raw;
+            - result should match the Python row count
+
+            In Excel:
+            - Load the table from SQL
+            - Check the row count at the bottom of the Power Query window
+
+            If the row counts are the same in all three steps, then all data has been
+            successfully transferred from CSV ->Python-> SQL ->Excel.
+    
+        """
+
         cols_sql = ", ".join([f"[{c}] NVARCHAR(MAX) NULL" for c in df2.columns])
         cur.execute(f"CREATE TABLE [{table_name}] ({cols_sql});")
         conn.commit()
