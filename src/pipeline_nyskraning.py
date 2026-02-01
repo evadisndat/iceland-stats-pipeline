@@ -67,8 +67,8 @@ def main():
     print(out.head())
     print("Rows:", len(out))
 
-    write_to_azure_sql(out, "business_registrations_monthly")
-    print("Wrote table: business_registrations_monthly")
+    write_to_azure_sql(out, "buisness_registrations_monthly")
+    print("Wrote table: buisness_registrations_monthly")
 
 if __name__ == "__main__":
     main()
