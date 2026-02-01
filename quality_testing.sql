@@ -35,3 +35,18 @@ SELECT COUNT(*)
 FROM unemployment_monthly u
 JOIN business_registrations_monthly b
   ON u.year = b.year AND u.month = b.month;
+
+-- rows sum of avg er það sama og i python = check
+SELECT
+  COUNT(*) AS rows,
+  SUM(unemployed) AS total_unemployed,
+  AVG(unemployed) AS avg_unemployed
+FROM unemployment_monthly;
+
+SELECT
+  COUNT(*) AS rows,
+  SUM(new_registrations) AS total_registrations,
+  AVG(new_registrations) AS avg_registrations
+FROM business_registrations_monthly;
+
+

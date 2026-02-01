@@ -25,8 +25,7 @@ def write_to_azure_sql(df: pd.DataFrame, table_name: str) -> int:
   
     df2 = df.copy()
     df2 = df2.astype(object).where(pd.notna(df2), None)
-    for c in df2.columns:
-        df2[c] = df2[c].apply(lambda v: None if v is None else str(v))
+    df2 = df.copy().where(pd.notna(df), None)
 
     with pyodbc.connect(conn_str) as conn:
         cur = conn.cursor()
@@ -38,7 +37,8 @@ def write_to_azure_sql(df: pd.DataFrame, table_name: str) -> int:
     
 
         
-        numeric_cols = {"year", "month", "unemployed"}
+        numeric_cols = {"year", "month", "unemployed", "new_registrations"}
+
 
         cols_sql = ", ".join(
             f"[{c}] INT NULL" if c in numeric_cols else f"[{c}] NVARCHAR(MAX) NULL"
