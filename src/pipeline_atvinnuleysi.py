@@ -1,12 +1,13 @@
 from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
-load_dotenv()
 import os
+
 from azure_db import write_to_azure_sql
 
+load_dotenv()
 
-
+# File path set up 
 BASE_DIR = Path(__file__).resolve().parents[1]
 RAW_DIR = BASE_DIR / "data" / "raw"
 RAW_DIR.mkdir(parents=True, exist_ok=True)
@@ -54,6 +55,7 @@ def coerce_icelandic_numbers(df: pd.DataFrame, exclude_cols: set) -> pd.DataFram
 2   2013M03  2013      3
 """
 def add_year_month_from_monthcode(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
+    #regex that looks for year and month to add 
     s = df[time_col].astype(str).str.strip()
     m = s.str.extract(r"^(?P<year>\d{4})[Mm](?P<month>\d{2})$")
     if m.isna().any().any():
@@ -66,54 +68,54 @@ def add_year_month_from_monthcode(df: pd.DataFrame, time_col: str) -> pd.DataFra
 
 
 def main():
-    
     csv_path = RAW_DIR / "atvinnuleysi.csv"
     if not csv_path.exists():
-        print("Settu atvinnuleysi.csv í data/raw fyrst.")
+        print(f"Missing file: {csv_path}")
         return
 
+    # read csv and normalize data
     df = read_hagstofa_csv(csv_path)
     df = normalize_columns(df)
 
-  
+    #find the number of unemployed
     time_col = df.columns[0]  
-
-
     preferred = "alls_atvinnulausir"
+    
     if preferred not in df.columns:
         candidates = [c for c in df.columns if "atvinnulaus" in c and "alls" in c]
-        print("Fann ekki 'alls_atvinnulausir'. Kandidatar:", candidates)
         if not candidates:
-            raise KeyError("Enginn dálkur fannst sem inniheldur bæði 'alls' og 'atvinnulaus'.")
+            raise KeyError("Could not find a matching unemployment column.")
         unemp_col = candidates[0]
     else:
         unemp_col = preferred
 
-   
+    #Transforms data into correct types for SQL
     df = df[[time_col, unemp_col]]
-
-    
     df = coerce_icelandic_numbers(df, exclude_cols={time_col})
-
-    
     df = add_year_month_from_monthcode(df, time_col=time_col)
 
-    
-    df = df[(df["year"] >= 2013) & (df["year"] <= 2023)].reset_index(drop=True)
+    #filter and sort data
+    df = df[(df["year"] >= 2013) & (df["year"] <= 2023)]
+    df = df.sort_values(by=["year", "month"], ascending=False)
 
-   
-    df = df.rename(columns={unemp_col: "unemployed"})
+    #Createa SQL data
+    #Instead of 2023 and 01, we create "2023-01-01", adds a 01 to end of every month.
+    # This is for ease of use with other tools that use the date format. 
+    df["mánuður"] = pd.to_datetime(
+        df["year"].astype(str) + "-" + df["month"].astype(str) + "-01"
+    ).dt.strftime('%Y-%m-%d')
 
-    
-    out = df[["year", "month", "unemployed"]].dropna(subset=["unemployed"])
+    #FINAL PREP
+    df = df.rename(columns={unemp_col: "atvinnulausir"})
+    out = df[["mánuður", "atvinnulausir"]].dropna(subset=["atvinnulausir"]).reset_index(drop=True)
 
+    print("--- PREVIEW ---")
     print(out.head())
-    print("Rows:", len(out))
+    print(f"Total rows to upload: {len(out)}")
 
-    print("\nWriting to Azure SQL...")
+    print("\nConnecting to Azure...")
     count = write_to_azure_sql(out, "unemployment_monthly")
-    print("Rows in Azure SQL unemployment_monthly:", count)
-
+    print(f"Success! {count} rows are now in Azure.")
 
 if __name__ == "__main__":
     main()
