@@ -7,8 +7,6 @@ from azure_db import write_to_azure_sql
 
 
 
-
-
 BASE_DIR = Path(__file__).resolve().parents[1]
 RAW_DIR = BASE_DIR / "data" / "raw"
 RAW_DIR.mkdir(parents=True, exist_ok=True)
@@ -21,7 +19,8 @@ def read_hagstofa_csv(csv_path: Path) -> pd.DataFrame:
             return df
     return df
 
-
+# Data cleaning
+# ----------------------------------------------------------
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
     return df
@@ -51,6 +50,8 @@ def add_year_month_from_monthcode(df: pd.DataFrame, time_col: str) -> pd.DataFra
     df["year"] = m["year"].astype(int)
     df["month"] = m["month"].astype(int)
     return df
+# ----------------------------------------------------------
+
 
 
 def main():

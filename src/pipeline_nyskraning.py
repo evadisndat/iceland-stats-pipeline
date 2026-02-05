@@ -21,6 +21,8 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
     return df
 
+# Data cleaning
+# ----------------------------------------------------------
 def coerce_icelandic_numbers(s: pd.Series) -> pd.Series:
     # 1.234 -> 1234, tómt -> NaN
     return pd.to_numeric(
@@ -35,6 +37,7 @@ def add_year_month_from_monthcode(df: pd.DataFrame, time_col: str) -> pd.DataFra
     df["year"] = m["year"].astype(int)
     df["month"] = m["month"].astype(int)
     return df
+# ----------------------------------------------------------
 
 def main():
     csv_path = RAW_DIR / "nyskraning.csv"
