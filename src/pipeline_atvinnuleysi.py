@@ -42,6 +42,17 @@ def coerce_icelandic_numbers(df: pd.DataFrame, exclude_cols: set) -> pd.DataFram
 
 
 #parse dates from pbX formati í venjulegar dagsetningar
+"""
+   time_col
+0   2013M01
+1   2013M02
+2   2013M03
+
+   time_col  year  month
+0   2013M01  2013      1
+1   2013M02  2013      2
+2   2013M03  2013      3
+"""
 def add_year_month_from_monthcode(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
     s = df[time_col].astype(str).str.strip()
     m = s.str.extract(r"^(?P<year>\d{4})[Mm](?P<month>\d{2})$")

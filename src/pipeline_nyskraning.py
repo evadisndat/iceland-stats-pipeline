@@ -17,12 +17,13 @@ def read_hagstofa_csv(csv_path: Path) -> pd.DataFrame:
             return df
     return df
 
+# Data cleaning
+# ----------------------------------------------------------
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
     return df
 
-# Data cleaning
-# ----------------------------------------------------------
+
 def coerce_icelandic_numbers(s: pd.Series) -> pd.Series:
     # 1.234 -> 1234, tómt -> NaN
     return pd.to_numeric(
@@ -30,6 +31,17 @@ def coerce_icelandic_numbers(s: pd.Series) -> pd.Series:
         errors="coerce"
     )
 
+"""
+   time_col
+0   2013M01
+1   2013M02
+2   2013M03
+
+   time_col  year  month
+0   2013M01  2013      1
+1   2013M02  2013      2
+2   2013M03  2013      3
+"""
 def add_year_month_from_monthcode(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
     m = df[time_col].astype(str).str.strip().str.extract(r"^(?P<year>\d{4})[Mm](?P<month>\d{2})$")
     if m.isna().any().any():
